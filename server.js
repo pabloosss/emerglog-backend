@@ -14,27 +14,27 @@ const PORT = process.env.PORT || 10000;
 app.use(cors());
 app.use(bodyParser.json());
 
-// 🔹 **Serwowanie plików statycznych (strona frontend)**
+// 📌 **Serwowanie plików statycznych (Frontend)**
 app.use(express.static(path.join(__dirname, "public")));
 
-// 🔹 **Endpoint do głównej strony**
+// 📌 **Główna strona**
 app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-// 🔹 **Testowy endpoint "/test"**
+// 📌 **Testowy endpoint**
 app.get("/test", (req, res) => {
     res.json({ message: "✅ Serwer działa poprawnie!" });
 });
 
-// 🔹 **Lista przechowywania wysłanych e-maili**
+// 📌 **Lista wysłanych zgłoszeń (baza pamięciowa)**
 let sentEmails = [];
 
-// 🔹 **Endpoint do wysyłania PDF na e-mail**
+// 📌 **Endpoint do generowania i wysyłania PDF**
 app.post("/send-pdf", async (req, res) => {
     const { name, email, tableData } = req.body;
 
-    if (!name || !email || !tableData) {
+    if (!name || !email || !tableData || !Array.isArray(tableData)) {
         return res.status(400).json({ message: "❌ Brak wymaganych danych!" });
     }
 
@@ -75,10 +75,7 @@ app.post("/send-pdf", async (req, res) => {
         try {
             await transporter.sendMail(mailOptions);
             console.log("✅ Email wysłany do:", email);
-
-            // Zapisujemy użytkownika do listy wysłanych
-            sentEmails.push({ name, email, timestamp: new Date().toISOString() });
-
+            sentEmails.push({ name, email, date: new Date().toISOString() });
             res.json({ message: "✅ PDF wysłany!" });
 
             // Usuwanie pliku po wysłaniu
@@ -93,12 +90,10 @@ app.post("/send-pdf", async (req, res) => {
     });
 });
 
-// 🔹 **Endpoint do sprawdzenia wysłanych e-maili**
+// 📌 **Endpoint do sprawdzania wysłanych e-maili**
 app.get("/sent-emails", (req, res) => {
     res.json(sentEmails);
 });
 
-// Start serwera
-app.listen(PORT, () => {
-    console.log(`✅ Serwer działa na porcie ${PORT}`);
-});
+// 📌 **Start serwera**
+app.listen(PORT, () => console.log(`✅ Serwer działa na porcie ${PORT}`));
