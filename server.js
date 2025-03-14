@@ -10,30 +10,24 @@ require("dotenv").config();
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Middleware
 app.use(cors());
 app.use(bodyParser.json());
-
-// Serwowanie plików statycznych (Frontend)
 app.use(express.static(path.join(__dirname, "public")));
 
-// Główna strona
 app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-// Testowy endpoint
 app.get("/test", (req, res) => {
     res.json({ message: "✅ Serwer działa poprawnie!" });
 });
 
-// Lista wysłanych zgłoszeń (baza pamięciowa)
 let sentEmails = [];
 
-// Endpoint do generowania i wysyłania PDF
+// **UWAGA: Brak 'pawel.ruchlicki@emerlog.eu' w klamrach!**
 app.post("/send-pdf", async (req, res) => {
-  // np. nadpisz email z req.body
   let { name, email, tableData } = req.body;
+  // Jeśli chcesz na sztywno, nadpisuj:
   email = "pawel.ruchlicki@emerlog.eu";
 
   // Sprawdzamy poprawność danych
@@ -58,7 +52,6 @@ app.post("/send-pdf", async (req, res) => {
 
   doc.end();
 
-  // Po zakończeniu zapisu PDF - wysyłamy maila
   writeStream.on("finish", async () => {
       let transporter = nodemailer.createTransport({
           service: "Gmail",
@@ -82,7 +75,7 @@ app.post("/send-pdf", async (req, res) => {
           sentEmails.push({ name, email, date: new Date().toISOString() });
           res.json({ message: "✅ PDF wysłany!" });
 
-          // Usuwanie pliku po wysłaniu
+          // Usuwamy plik po 5s
           setTimeout(() => {
               fs.unlinkSync(filePath);
               console.log("🗑️ Plik PDF usunięty:", filePath);
@@ -94,10 +87,8 @@ app.post("/send-pdf", async (req, res) => {
   });
 });
 
-// Endpoint do sprawdzania wysłanych e-maili
 app.get("/sent-emails", (req, res) => {
     res.json(sentEmails);
 });
 
-// Start serwera
 app.listen(PORT, () => console.log(`✅ Serwer działa na porcie ${PORT}`));
