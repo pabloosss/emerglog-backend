@@ -89,7 +89,6 @@ app.post("/send-pdf", async (req, res) => {
             res.status(500).json({ message: "❌ Błąd wysyłania e-maila", error });
         }
     });
-});
 
 // 📌 **Endpoint do sprawdzania wysłanych e-maili**
 app.get("/sent-emails", (req, res) => {
