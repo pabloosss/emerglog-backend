@@ -27,6 +27,9 @@ app.get("/test", (req, res) => {
     res.json({ message: "✅ Serwer działa poprawnie!" });
 });
 
+// 🔹 **Lista przechowywania wysłanych e-maili**
+let sentEmails = [];
+
 // 🔹 **Endpoint do wysyłania PDF na e-mail**
 app.post("/send-pdf", async (req, res) => {
     const { name, email, tableData } = req.body;
@@ -72,6 +75,10 @@ app.post("/send-pdf", async (req, res) => {
         try {
             await transporter.sendMail(mailOptions);
             console.log("✅ Email wysłany do:", email);
+
+            // Zapisujemy użytkownika do listy wysłanych
+            sentEmails.push({ name, email, timestamp: new Date().toISOString() });
+
             res.json({ message: "✅ PDF wysłany!" });
 
             // Usuwanie pliku po wysłaniu
@@ -87,5 +94,11 @@ app.post("/send-pdf", async (req, res) => {
 });
 
 // 🔹 **Endpoint do sprawdzenia wysłanych e-maili**
-let sentEmails = [];
-app.get("/sent-emails
+app.get("/sent-emails", (req, res) => {
+    res.json(sentEmails);
+});
+
+// Start serwera
+app.listen(PORT, () => {
+    console.log(`✅ Serwer działa na porcie ${PORT}`);
+});
