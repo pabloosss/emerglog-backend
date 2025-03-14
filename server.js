@@ -1,3 +1,5 @@
+const path = require("path");
+app.use(express.static(path.join(__dirname, "public")));
 const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
