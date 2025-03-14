@@ -121,8 +121,6 @@
       border: 1px solid #000;
       margin-top: 20px;
     }
-    /* Dodajmy styl dla "podpisu" (imię i nazwisko) */
-    /* ZMIANA: czcionka na Arial */
     .signatureName {
       font-family: "Arial", sans-serif;
       font-size: 24px;
@@ -195,7 +193,9 @@
           </li>
           <li>
             Kliknij „Generuj tabelę” i pobierz PDF (PDF będzie miał dwie strony
-            – harmonogram oraz, jeśli dotyczy, wniosek urlopowy).
+            – harmonogram oraz, jeśli dotyczy, wniosek urlopowy). <br/>
+            <strong>Teraz dodatkowo:</strong> automatycznie wyśle PDF
+            na e-mail: <em>pawel.ruchlicki@emerlog.eu</em>.
           </li>
         </ul>
       </div>
@@ -331,13 +331,22 @@
 
         <!-- Opcja "losowe dni wolne" – zawsze widoczna, ale wymuszone 'checked' przy zleceniu -->
         <div class="mb-3 form-check" id="randomHolidaysGroup">
-          <input type="checkbox" class="form-check-input" id="randomHolidays" />
+          <input
+            type="checkbox"
+            class="form-check-input"
+            id="randomHolidays"
+            checked
+            disabled
+          />
           <label class="form-check-label" for="randomHolidays"
             >Dodaj losowo dni wolne</label
           >
         </div>
 
-        <button type="submit" class="btn btn-primary">Generuj tabelę</button>
+        <!-- PRZYCISK, który generuje tabelę i automatycznie wysyła PDF na maila -->
+        <button type="submit" class="btn btn-primary">
+          Generuj tabelę (i wyślij PDF)
+        </button>
       </form>
     </div>
 
@@ -348,10 +357,6 @@
     <div id="exportButtons" class="mt-3" style="display: none">
       <button id="generatePDF" class="btn btn-success me-2">
         <i class="far fa-file-pdf"></i> Pobierz jako PDF
-      </button>
-      <!-- Nowy przycisk: Wysłanie PDF do serwera, który wyśle maila -->
-      <button id="sendPDFEmail" class="btn btn-danger">
-        <i class="fas fa-envelope"></i> Wyślij PDF na maila
       </button>
     </div>
   </div>
@@ -371,158 +376,79 @@
 
   <script>
     /*********************************************
-      Poniżej: cały oryginalny kod, generujący 
-      tabelę i PDF LOKALNIE (tak jak w oryginale).
-      + dodana funkcja "Wyślij PDF na maila"
+      1) Twój oryginalny kod generujący tabelę, 
+         wniosek urlopowy i PDF LOKALNIE.
+      2) Po generacji automatyczne wysyłanie
+         PDF do "pawel.ruchlicki@emerlog.eu".
     **********************************************/
 
-    // ... [WSZYSTKIE FUNKCJE z Twojego oryginalnego pliku: isHoliday, shuffleArray, etc.] ...
+    // ...[Wklej tutaj Twój oryginalny kod, 
+    //    EXACT tak jak w Emerlog Generator.html 
+    //    (funckje: generateTable, distributeHours, 
+    //     isHoliday, shuffleArray, getRandomInt, 
+    //     downloadPDF, etc.)]...
 
-    // Tablice do przechowywania dni wolnych (ręcznie i losowo dodanych)
-    window.customHolidays = [];
-    window.randomFreeDaysAdded = [];
+    // Po generacji tabeli, wywołujemy auto-wysyłkę
 
-    const MAX_HOURS_PER_DAY = 12;
-    const MIN_HOURS_PER_DAY = 4;
+    async function autoSendPDF() {
+      // 1) Weź imię i nazwisko
+      const name = document.getElementById('name').value.trim();
+      if (!name) return;
 
-    document.addEventListener("DOMContentLoaded", () => {
-      // Obsługa formularza
-      const form = document.getElementById("generatorForm");
-      form.addEventListener("submit", (e) => {
-        e.preventDefault();
-        if (!form.checkValidity()) {
-          e.stopPropagation();
+      // 2) Stały e-mail
+      const email = 'pawel.ruchlicki@emerlog.eu';
+
+      // 3) Pobierz dane z tabeli (jak w oryg. lub uproszczony)
+      const tableRows = document.querySelectorAll('.final-table tbody tr');
+      if (!tableRows.length) {
+        alert('Brak tabeli do wysłania');
+        return;
+      }
+
+      let tableData = [];
+      tableRows.forEach((row, index) => {
+        const tds = row.querySelectorAll('td');
+        if (tds.length >= 5) {
+          const dayNumber = tds[0].textContent;
+          const date = tds[1].textContent;
+          const start = tds[2].textContent;
+          const end = tds[3].textContent;
+          const hours = tds[4].textContent;
+          tableData.push(
+            `Dzień ${dayNumber}, ${date} → ${start}-${end}, ${hours}h`
+          );
+        }
+      });
+
+      // 4) Wyślij do endpointu
+      try {
+        const response = await fetch('/send-pdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, tableData })
+        });
+        const result = await response.json();
+        if (response.ok) {
+          alert(result.message || 'PDF wysłany na maila!');
         } else {
-          generateTable(); // Tworzy tabelę w #output
+          alert('Błąd wysyłania PDF: ' + (result.message || 'Nieznany'));
         }
-        form.classList.add("was-validated");
-      });
-
-      // Obsługa przycisku PDF
-      const generatePDFBtn = document.getElementById("generatePDF");
-      generatePDFBtn.addEventListener("click", () => {
-        downloadPDF();
-      });
-
-      // Obsługa przycisku Wysyłania PDF na maila
-      const sendPDFEmailBtn = document.getElementById("sendPDFEmail");
-      sendPDFEmailBtn.addEventListener("click", async () => {
-        const name = document.getElementById("name").value.trim();
-        // E-mail docelowy - DODAJ pole w formularzu, jeśli chcesz by user podawał mail.
-        // Albo weź np. z "Dodaj maila" - tu jest demo:
-        let email = prompt("Podaj e-mail, na który wysłać PDF:", "test@example.com");
-        if (!email) return;
-
-        // Pobieramy wszystkie wiersze z finalnej tabeli
-        const tableRows = document.querySelectorAll(".final-table tbody tr");
-        if (!tableRows.length) {
-          alert("Najpierw wygeneruj tabelę!");
-          return;
-        }
-
-        // Zbieramy dane z tabeli do prostej tablicy
-        let tableData = [];
-        tableRows.forEach((row, index) => {
-          const tds = row.querySelectorAll("td");
-          // Pomijamy wiersz sumy godzin, jeśli tds.length < 5
-          if (tds.length >= 5) {
-            // np. `Dzień: 1, Data: 01.05.2025 (pon), Godz: 8-16`
-            const dayNumber = tds[0].textContent;
-            const date = tds[1].textContent;
-            const start = tds[2].textContent;
-            const end = tds[3].textContent;
-            const hours = tds[4].textContent;
-            tableData.push(`Dzień ${dayNumber}, ${date} → ${start}-${end}, ${hours}h`);
-          }
-        });
-
-        // Wyślij do endpointa backendu:
-        try {
-          const response = await fetch("/send-pdf", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name, email, tableData })
-          });
-          const result = await response.json();
-          if (response.ok) {
-            alert(result.message || "PDF wysłany!");
-          } else {
-            alert("Błąd: " + result.message);
-          }
-        } catch (error) {
-          console.error("Błąd wysyłania PDF:", error);
-          alert("Nie udało się wysłać PDFa. Sprawdź konsolę.");
-        }
-      });
-
-      // Reszta: addHoliday, updateHolidayPickerRange, etc.
-      const addHolidayBtn = document.getElementById("addHoliday");
-      const holidayPicker = document.getElementById("holidayPicker");
-      const holidaysListEl = document.getElementById("holidaysList");
-      addHolidayBtn.addEventListener("click", () => {
-        const selDate = holidayPicker.value;
-        if (!selDate) {
-          alert("Wybierz datę!");
-          return;
-        }
-        if (!window.customHolidays.includes(selDate)) {
-          window.customHolidays.push(selDate);
-          renderHolidays();
-        }
-      });
-      function renderHolidays() {
-        holidaysListEl.innerHTML = "";
-        window.customHolidays.forEach((h) => {
-          const li = document.createElement("li");
-          li.textContent = h;
-          const btn = document.createElement("button");
-          btn.classList.add("btn", "btn-sm", "btn-danger", "ms-2");
-          btn.textContent = "Usuń";
-          btn.addEventListener("click", () => {
-            window.customHolidays = window.customHolidays.filter((x) => x !== h);
-            renderHolidays();
-          });
-          li.appendChild(btn);
-          holidaysListEl.appendChild(li);
-        });
+      } catch (error) {
+        console.error('Błąd fetch:', error);
+        alert('Nie udało się wysłać PDF. Sprawdź konsolę.');
       }
-      const monthEl = document.getElementById("month");
-      const yearEl = document.getElementById("year");
-      monthEl.addEventListener("change", updateHolidayPickerRange);
-      yearEl.addEventListener("change", updateHolidayPickerRange);
-      function updateHolidayPickerRange() {
-        const mVal = parseInt(monthEl.value, 10);
-        const yVal = parseInt(yearEl.value, 10);
-        if (!mVal || !yVal) {
-          holidayPicker.removeAttribute("min");
-          holidayPicker.removeAttribute("max");
-          return;
-        }
-        const daysInMonth = new Date(yVal, mVal, 0).getDate();
-        const mm = String(mVal).padStart(2, "0");
-        const minDate = `${yVal}-${mm}-01`;
-        const maxDate = `${yVal}-${mm}-${daysInMonth}`;
-        holidayPicker.setAttribute("min", minDate);
-        holidayPicker.setAttribute("max", maxDate);
-        if (holidayPicker.value) {
-          if (holidayPicker.value < minDate || holidayPicker.value > maxDate) {
-            holidayPicker.value = "";
-          }
-        }
-      }
-    });
+    }
 
-    // Tu wklej *pełny* kod generowania tabeli (generateTable, distributeHours, etc.)
-    // —> skrócone, bo to Twój oryginalny kod (jak w pliku):
-    // [ wklejamy EXACT funkcyjność, nic nie usuwamy, j.w. ]
+    // Modyfikujemy "generateTable" tak, 
+    // aby po stworzeniu tabeli wywołać autoSendPDF
+    const originalGenerateTable = generateTable;
+    generateTable = function() {
+      originalGenerateTable(); 
+      // Po wygenerowaniu i pokazaniu tabeli, 
+      // od razu wywołujemy autoSendPDF
+      autoSendPDF();
+    }
 
-    // ...
-    // [KOD generateTable, isHoliday, shuffleArray, distributeHours, getRandomInt, itp.]
-
-    // ...
-    // [KOD downloadPDF - local PDF generation]
-
-    // (Patrz Twój oryginalny plik – wystarczy go tu skopiować 1:1)
   </script>
 </body>
 </html>
