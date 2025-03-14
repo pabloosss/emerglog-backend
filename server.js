@@ -1,6 +1,5 @@
-const path = require("path");
-app.use(express.static(path.join(__dirname, "public")));
 const express = require("express");
+const path = require("path");
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const nodemailer = require("nodemailer");
@@ -9,22 +8,26 @@ const fs = require("fs");
 require("dotenv").config();
 
 const app = express();
-const PORT = process.env.PORT || 10000; // Render wymaga używania zmiennej PORT
+const PORT = process.env.PORT || 10000;
 
+// Middleware
 app.use(cors());
 app.use(bodyParser.json());
 
-// **Główny endpoint "/"**
+// 🔹 **Serwowanie plików statycznych (strona frontend)**
+app.use(express.static(path.join(__dirname, "public")));
+
+// 🔹 **Endpoint do głównej strony**
 app.get("/", (req, res) => {
-    res.send("✅ Serwer działa poprawnie!");
+    res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-// **Testowy endpoint "/test"**
+// 🔹 **Testowy endpoint "/test"**
 app.get("/test", (req, res) => {
-    res.json({ message: "Serwer działa poprawnie, test OK!" });
+    res.json({ message: "✅ Serwer działa poprawnie!" });
 });
 
-// **Endpoint do wysyłania PDF na e-mail**
+// 🔹 **Endpoint do wysyłania PDF na e-mail**
 app.post("/send-pdf", async (req, res) => {
     const { name, email, tableData } = req.body;
 
@@ -83,13 +86,6 @@ app.post("/send-pdf", async (req, res) => {
     });
 });
 
-// **Endpoint do sprawdzenia wysłanych e-maili**
+// 🔹 **Endpoint do sprawdzenia wysłanych e-maili**
 let sentEmails = [];
-app.get("/sent-emails", (req, res) => {
-    res.json(sentEmails);
-});
-
-// **Start serwera**
-app.listen(PORT, () => {
-    console.log(`🚀 Serwer działa na porcie ${PORT}`);
-});
+app.get("/sent-emails
