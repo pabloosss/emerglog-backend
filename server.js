@@ -32,8 +32,9 @@ let sentEmails = [];
 
 // 📌 **Endpoint do generowania i wysyłania PDF**
 app.post("/send-pdf", async (req, res) => {
-    const { name, email, tableData } = req.body;
-
+  const { name, email, tableData } = req.body;
+  // generowanie pliku PDF + wysyłka mailem
+});
     if (!name || !email || !tableData || !Array.isArray(tableData)) {
         return res.status(400).json({ message: "❌ Brak wymaganych danych!" });
     }
