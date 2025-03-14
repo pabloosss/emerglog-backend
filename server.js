@@ -31,7 +31,7 @@ app.get("/test", (req, res) => {
 let sentEmails = [];
 
 // Endpoint do generowania i wysyłania PDF
-app.post("/send-pdf", async (req, res) => {pawel.ruchlicki@emerlog.eu
+app.post("/send-pdf", async (req, res) => {pawel.ruchlicki@emerlog.eu})
   const { name, email, tableData } = req.body;
 
   // Sprawdzamy poprawność danych
