@@ -1,90 +1,139 @@
 const express = require("express");
+const path = require("path");
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const nodemailer = require("nodemailer");
-const { GoogleSpreadsheet } = require("google-spreadsheet");
+const PDFDocument = require("pdfkit");
 const fs = require("fs");
-require("dotenv").config();
+const { GoogleSpreadsheet } = require("google-spreadsheet");
 const creds = require("./keys.json");
+require("dotenv").config();
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
+// Middleware
 app.use(cors());
 app.use(bodyParser.json());
+app.use(express.static(path.join(__dirname, "public")));
 
-const SHEET_ID = "10XgqG_OCszYY8wqJlhpiPNgBxuEwFZOJJF2iuXTdqpY";
+// Główna strona
+app.get("/", (req, res) => {
+    res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
+// Endpoint do testowania
+app.get("/test", (req, res) => {
+    res.json({ message: "✅ Serwer działa poprawnie!" });
+});
+
+// Lista wysłanych e-maili
+let sentEmails = [];
+
+// Konfiguracja Google Sheets
+const SHEET_ID = "10XgqG_OCszYY8wqJlhpiPNgBxuEwFZOJJF2iuXTdqpY"; // Twój ID arkusza
+const doc = new GoogleSpreadsheet(SHEET_ID);
 
 async function updateSpreadsheet(name, monthYear) {
     try {
-        const doc = new GoogleSpreadsheet(SHEET_ID);
         await doc.useServiceAccountAuth(creds);
         await doc.loadInfo();
-        
-        const sheet = doc.sheetsByIndex[0]; // Zakładamy, że dane są w pierwszym arkuszu
-        await sheet.loadHeaderRow();
-        
-        const rows = await sheet.getRows();
-        const monthCol = sheet.headerValues.find(col => col.includes(monthYear));
-        
-        if (!monthCol) {
-            console.error("❌ Nie znaleziono kolumny dla miesiąca:", monthYear);
-            return;
-        }
-        
-        for (let row of rows) {
-            if (row["Unnamed: 0"].toLowerCase() === name.toLowerCase()) {
-                row[monthCol] = "Wysłano";
-                await row.save();
-                console.log(`✅ Zaktualizowano arkusz: ${name} - ${monthYear}`);
-                return;
+        const sheet = doc.sheetsByIndex[0]; // Pierwsza karta w arkuszu
+        await sheet.loadCells("A1:Z100"); // Załaduj dane
+
+        let nameRow = null;
+        let monthCol = null;
+
+        for (let row = 0; row < sheet.rowCount; row++) {
+            const cell = sheet.getCell(row, 0);
+            if (cell.value && cell.value.toLowerCase() === name.toLowerCase()) {
+                nameRow = row;
+                break;
             }
         }
-        
-        console.error("❌ Nie znaleziono osoby w arkuszu:", name);
+
+        for (let col = 0; col < sheet.columnCount; col++) {
+            const cell = sheet.getCell(0, col);
+            if (cell.value && cell.value === monthYear) {
+                monthCol = col;
+                break;
+            }
+        }
+
+        if (nameRow !== null && monthCol !== null) {
+            sheet.getCell(nameRow, monthCol).value = "Wysłano";
+            await sheet.saveUpdatedCells();
+        } else {
+            console.error("❌ Nie znaleziono odpowiedniej kolumny lub wiersza w arkuszu!");
+        }
     } catch (error) {
         console.error("❌ Błąd aktualizacji arkusza:", error);
     }
 }
 
+// Endpoint do generowania i wysyłania PDF
 app.post("/send-pdf", async (req, res) => {
-    const { name, email, tableData, monthYear } = req.body;
-    if (!name || !email || !tableData || !Array.isArray(tableData) || !monthYear) {
+    const { name, email, monthYear, tableData } = req.body;
+    if (!name || !email || !tableData || !Array.isArray(tableData)) {
         return res.status(400).json({ message: "❌ Brak wymaganych danych!" });
     }
 
     console.log("📩 Próba wysyłki e-maila na adres:", email);
+    const docPdf = new PDFDocument();
     const filePath = `./${name.replace(/\s+/g, "_")}_schedule.pdf`;
-    
-    fs.writeFileSync(filePath, "Dane PDF (symulacja)");
-    
-    let transporter = nodemailer.createTransport({
-        service: "Gmail",
-        auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS,
-        },
-    });
-    
-    let mailOptions = {
-        from: process.env.EMAIL_USER,
-        to: email,
-        subject: `Twój harmonogram godzin - ${name}`,
-        text: "W załączniku znajdziesz swój harmonogram godzin.",
-        attachments: [{ filename: `${name}_schedule.pdf`, path: filePath }],
-    };
+    const writeStream = fs.createWriteStream(filePath);
+    docPdf.pipe(writeStream);
 
-    try {
-        await transporter.sendMail(mailOptions);
-        console.log("✅ Email wysłany do:", email);
-        await updateSpreadsheet(name, monthYear);
-        res.json({ message: "✅ PDF wysłany i arkusz zaktualizowany!" });
-        
-        setTimeout(() => fs.unlinkSync(filePath), 5000);
-    } catch (error) {
-        console.error("❌ Błąd wysyłania e-maila:", error);
-        res.status(500).json({ message: "❌ Błąd wysyłania e-maila", error });
-    }
+    docPdf.fontSize(20).text(`Harmonogram godzinowy dla: ${name}`, { align: "center" });
+    docPdf.moveDown();
+
+    tableData.forEach((row, index) => {
+        docPdf.fontSize(12).text(`${index + 1}. ${row}`, { indent: 10 });
+    });
+
+    docPdf.end();
+
+    writeStream.on("finish", async () => {
+        let transporter = nodemailer.createTransport({
+            service: "Gmail",
+            auth: {
+                user: process.env.EMAIL_USER,
+                pass: process.env.EMAIL_PASS,
+            },
+        });
+
+        let mailOptions = {
+            from: process.env.EMAIL_USER,
+            to: email,
+            subject: `Twój harmonogram godzin - ${name}`,
+            text: "W załączniku znajdziesz swój harmonogram godzin.",
+            attachments: [{ filename: `${name}_schedule.pdf`, path: filePath }],
+        };
+
+        try {
+            await transporter.sendMail(mailOptions);
+            console.log("✅ Email wysłany do:", email);
+            sentEmails.push({ name, email, date: new Date().toISOString() });
+            res.json({ message: "✅ PDF wysłany!" });
+
+            // Aktualizacja arkusza Google Sheets
+            await updateSpreadsheet(name, monthYear);
+
+            setTimeout(() => {
+                fs.unlinkSync(filePath);
+                console.log("🗑️ Plik PDF usunięty:", filePath);
+            }, 5000);
+        } catch (error) {
+            console.error("❌ Błąd wysyłania e-maila:", error);
+            res.status(500).json({ message: "❌ Błąd wysyłania e-maila", error });
+        }
+    });
 });
 
+// Endpoint do sprawdzania wysłanych e-maili
+app.get("/sent-emails", (req, res) => {
+    res.json(sentEmails);
+});
+
+// Start serwera
 app.listen(PORT, () => console.log(`✅ Serwer działa na porcie ${PORT}`));
