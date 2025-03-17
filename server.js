@@ -16,7 +16,15 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Google Sheets API
+// 📌 **Serwowanie plików statycznych (Frontend)**
+app.use(express.static(path.join(__dirname, "public")));
+
+// 📌 **Główna strona**
+app.get("/", (req, res) => {
+    res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
+// 📌 **Google Sheets API - aktualizacja arkusza**
 const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
 const SHEET_ID = "10XgqG_OCszYY8wqJlhpiPNgBxuEwFZOJJF2iuXTdqpY"; // ID Twojego arkusza
 
@@ -65,7 +73,7 @@ async function updateSpreadsheet(name, monthYear) {
         }
 
         // Aktualizacja wartości w arkuszu
-        const range = `B${nameRow + 1}`; // Przesunięcie o jeden wiersz
+        const range = `${String.fromCharCode(66 + columnIndex)}${nameRow + 1}`;
         await sheets.spreadsheets.values.update({
             spreadsheetId: SHEET_ID,
             range: range,
@@ -81,7 +89,7 @@ async function updateSpreadsheet(name, monthYear) {
     }
 }
 
-// Endpoint do generowania i wysyłania PDF
+// 📌 **Endpoint do generowania i wysyłania PDF**
 app.post("/send-pdf", async (req, res) => {
     const { name, email, tableData } = req.body;
 
@@ -144,5 +152,5 @@ app.post("/send-pdf", async (req, res) => {
     });
 });
 
-// Start serwera
+// 📌 **Start serwera**
 app.listen(PORT, () => console.log(`✅ Serwer działa na porcie ${PORT}`));
