@@ -75,6 +75,35 @@
       } catch (error) {
         console.error("Błąd wysyłania e-maila:", error);
         alert("Wystąpił błąd podczas wysyłania e-maila!");
+        async function loadEmployeeList() {
+    try {
+        const response = await fetch("/employees");
+        const employees = await response.json();
+
+        const nameInput = document.getElementById("name");
+        const emailInput = document.getElementById("email");
+        const submitBtn = document.getElementById("submitBtn");
+
+        nameInput.addEventListener("blur", () => {
+            const selected = employees.find(emp => emp.Imię + " " + emp.Nazwisko === nameInput.value.trim());
+            if (selected) {
+                emailInput.value = selected["Email"];
+                if (selected.Status === "Wysłano") {
+                    submitBtn.disabled = true;
+                    submitBtn.innerText = "✅ Już wysłano";
+                } else {
+                    submitBtn.disabled = false;
+                    submitBtn.innerText = "📩 Wyślij";
+                }
+            }
+        });
+    } catch (error) {
+        console.error("❌ Błąd ładowania listy pracowników:", error);
+    }
+}
+
+document.addEventListener("DOMContentLoaded", loadEmployeeList);
+
       }
     });
   </script>
