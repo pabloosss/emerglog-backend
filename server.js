@@ -5,7 +5,8 @@ const bodyParser = require("body-parser");
 const nodemailer = require("nodemailer");
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
-const { GoogleSpreadsheet } = require('google-spreadsheet');
+const { GoogleSpreadsheet } = require("google-spreadsheet");
+const { JWT } = require("google-auth-library");
 require("dotenv").config();
 
 const creds = require("./keys.json"); // Klucz Google API
@@ -37,8 +38,13 @@ let sentEmails = [];
 // 📌 **Funkcja do aktualizacji arkusza Google Sheets**
 async function updateSpreadsheet(name, monthYear) {
     try {
-        const doc = new GoogleSpreadsheet(SHEET_ID);
-        await doc.useServiceAccountAuth(creds);
+        const jwtClient = new JWT({
+            email: creds.client_email,
+            key: creds.private_key,
+            scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+        });
+
+        const doc = new GoogleSpreadsheet(SHEET_ID, jwtClient);
         await doc.loadInfo();
 
         const sheet = doc.sheetsByIndex[0]; // Pierwszy arkusz
