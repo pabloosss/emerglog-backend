@@ -5,90 +5,95 @@ const bodyParser = require("body-parser");
 const nodemailer = require("nodemailer");
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
-const { GoogleSpreadsheet } = require("google-spreadsheet");
-const dotenv = require("dotenv");
-
-dotenv.config();
+const { google } = require("googleapis");
+require("dotenv").config();
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
 // Middleware
 app.use(cors());
-app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Konfiguracja Google Sheets
-const SHEET_ID = "10XgqG_OCszYY8wqJlhpiPNgBxuEwFZOJJF2iuXTdqpY";
-const doc = new GoogleSpreadsheet(SHEET_ID);
+// Google Sheets API
+const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
+const SHEET_ID = "10XgqG_OCszYY8wqJlhpiPNgBxuEwFZOJJF2iuXTdqpY"; // ID Twojego arkusza
 
-// Autoryzacja Google Sheets
-async function authorizeGoogleSheets() {
+async function updateSpreadsheet(name, monthYear) {
     try {
-        await doc.useServiceAccountAuth({
-            client_email: process.env.GOOGLE_CLIENT_EMAIL,
-            private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+        const auth = new google.auth.GoogleAuth({
+            credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS),
+            scopes: SCOPES,
         });
-        await doc.loadInfo();
-        console.log("✅ Google Sheets - autoryzacja udana.");
-    } catch (error) {
-        console.error("❌ Błąd autoryzacji Google Sheets:", error);
-    }
-}
 
-// Pobranie listy imion i nazwisk
-async function getSheetData() {
-    await authorizeGoogleSheets();
-    const sheet = doc.sheetsByIndex[0];
-    const rows = await sheet.getRows();
-    return rows.map(row => row._rawData);
-}
+        const sheets = google.sheets({ version: "v4", auth });
 
-// Aktualizacja Google Sheets
-async function updateSpreadsheet(name, month) {
-    await authorizeGoogleSheets();
-    const sheet = doc.sheetsByIndex[0];
-    const rows = await sheet.getRows();
-    
-    let nameColumn = "A"; // Kolumna z imionami
-    let monthColumn = null;
+        const response = await sheets.spreadsheets.values.get({
+            spreadsheetId: SHEET_ID,
+            range: "A:Z", // Pobiera cały arkusz
+        });
 
-    // Pobranie indeksu kolumny na podstawie nagłówków
-    const headers = sheet.headerValues;
-    const monthIndex = headers.indexOf(month);
-    if (monthIndex !== -1) {
-        monthColumn = String.fromCharCode(66 + monthIndex - 1); // Konwersja na literę kolumny (B, C, D...)
-    }
-
-    if (!monthColumn) {
-        console.error("❌ Nie znaleziono kolumny dla miesiąca:", month);
-        return;
-    }
-
-    for (let row of rows) {
-        if (row[nameColumn] === name) {
-            row[monthColumn] = "✅ Wysłano";
-            await row.save();
-            console.log(`✅ Zaktualizowano arkusz dla ${name} (${month})`);
+        const rows = response.data.values;
+        if (!rows || rows.length === 0) {
+            console.log("❌ Arkusz jest pusty!");
             return;
         }
+
+        let nameRow = -1;
+        let columnIndex = -1;
+
+        // Znajdź wiersz odpowiadający użytkownikowi
+        rows.forEach((row, index) => {
+            if (row[0]?.toLowerCase() === name.toLowerCase()) {
+                nameRow = index;
+            }
+        });
+
+        // Znajdź kolumnę odpowiadającą miesiącowi
+        const headers = rows[0];
+        columnIndex = headers.indexOf(monthYear);
+
+        if (nameRow === -1) {
+            console.log(`❌ Nie znaleziono użytkownika: ${name}`);
+            return;
+        }
+
+        if (columnIndex === -1) {
+            console.log(`❌ Nie znaleziono kolumny dla miesiąca: ${monthYear}`);
+            return;
+        }
+
+        // Aktualizacja wartości w arkuszu
+        const range = `B${nameRow + 1}`; // Przesunięcie o jeden wiersz
+        await sheets.spreadsheets.values.update({
+            spreadsheetId: SHEET_ID,
+            range: range,
+            valueInputOption: "RAW",
+            requestBody: {
+                values: [["Wysłano"]],
+            },
+        });
+
+        console.log(`✅ Arkusz zaktualizowany dla ${name} (${monthYear})`);
+    } catch (error) {
+        console.error("❌ Błąd aktualizacji arkusza:", error);
     }
-    console.log(`⚠️ Nie znaleziono ${name} w arkuszu.`);
 }
 
-// Endpoint do wysyłki e-maila z PDF
+// Endpoint do generowania i wysyłania PDF
 app.post("/send-pdf", async (req, res) => {
-    const { name, email, tableData, month } = req.body;
+    const { name, email, tableData } = req.body;
 
-    if (!name || !email || !tableData || !Array.isArray(tableData) || !month) {
+    if (!name || !email || !tableData || !Array.isArray(tableData)) {
         return res.status(400).json({ message: "❌ Brak wymaganych danych!" });
     }
 
-    console.log(`📩 Próba wysyłki e-maila na adres: ${email}`);
+    console.log("📩 Otrzymane dane:", req.body);
 
     // Tworzenie pliku PDF
-    const filePath = `./${name.replace(/\s+/g, "_")}_schedule.pdf`;
     const doc = new PDFDocument();
+    const filePath = `./${name.replace(/\s+/g, "_")}_schedule.pdf`;
     const writeStream = fs.createWriteStream(filePath);
     doc.pipe(writeStream);
 
@@ -120,10 +125,14 @@ app.post("/send-pdf", async (req, res) => {
 
         try {
             await transporter.sendMail(mailOptions);
-            console.log(`✅ Email wysłany do: ${email}`);
-            await updateSpreadsheet(name, month);
-            res.json({ message: "✅ PDF wysłany i arkusz zaktualizowany!" });
+            console.log("✅ Email wysłany do:", email);
+            res.json({ message: "✅ PDF wysłany!" });
 
+            // Aktualizacja arkusza Google
+            const currentMonthYear = new Date().toISOString().slice(0, 7); // np. "2025-03"
+            await updateSpreadsheet(name, currentMonthYear);
+
+            // Usunięcie pliku po wysłaniu
             setTimeout(() => {
                 fs.unlinkSync(filePath);
                 console.log("🗑️ Plik PDF usunięty:", filePath);
@@ -133,16 +142,6 @@ app.post("/send-pdf", async (req, res) => {
             res.status(500).json({ message: "❌ Błąd wysyłania e-maila", error });
         }
     });
-});
-
-// Endpoint do pobrania danych z arkusza
-app.get("/get-sheet-data", async (req, res) => {
-    try {
-        const data = await getSheetData();
-        res.json(data);
-    } catch (error) {
-        res.status(500).json({ message: "❌ Błąd pobierania danych z arkusza", error });
-    }
 });
 
 // Start serwera
