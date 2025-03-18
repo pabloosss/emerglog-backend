@@ -13,32 +13,45 @@
     </style>
 </head>
 <body>
-    <h1>Panel Admina</h1>
-    <button onclick="goHome()">Powrót do strony głównej</button>
-    <button onclick="showResetModal()">Resetuj statusy użytkowników</button>
-    <div id="resetModal" class="hidden">
-        <h3>Podaj dane administratora:</h3>
+
+    <!-- Logowanie do panelu admina -->
+    <div id="loginSection">
+        <h2>Logowanie do Panelu Admina</h2>
         <input type="text" id="adminUsername" placeholder="Login"><br>
         <input type="password" id="adminPassword" placeholder="Hasło"><br>
-        <button onclick="resetUsers()">Potwierdź</button>
-        <button onclick="hideResetModal()">Anuluj</button>
+        <button onclick="loginAdmin()">Zaloguj</button>
     </div>
-    
-    <h2>Lista użytkowników</h2>
-    <table>
-        <thead>
-            <tr>
-                <th>Imię i Nazwisko</th>
-                <th>Status</th>
-                <th>Akcje</th>
-            </tr>
-        </thead>
-        <tbody id="userTable"></tbody>
-    </table>
-    
-    <h2>Dodaj użytkownika</h2>
-    <input type="text" id="newUserName" placeholder="Imię i Nazwisko">
-    <button onclick="addUser()">Dodaj</button>
+
+    <!-- Panel admina (ukryty do momentu zalogowania) -->
+    <div id="adminPanel" class="hidden">
+        <h1>Panel Admina</h1>
+        <button onclick="goHome()">Powrót do strony głównej</button>
+        <button onclick="showResetModal()">Resetuj statusy użytkowników</button>
+        
+        <div id="resetModal" class="hidden">
+            <h3>Podaj dane administratora:</h3>
+            <input type="text" id="resetUsername" placeholder="Login"><br>
+            <input type="password" id="resetPassword" placeholder="Hasło"><br>
+            <button onclick="resetUsers()">Potwierdź</button>
+            <button onclick="hideResetModal()">Anuluj</button>
+        </div>
+        
+        <h2>Lista użytkowników</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Imię i Nazwisko</th>
+                    <th>Status</th>
+                    <th>Akcje</th>
+                </tr>
+            </thead>
+            <tbody id="userTable"></tbody>
+        </table>
+        
+        <h2>Dodaj użytkownika</h2>
+        <input type="text" id="newUserName" placeholder="Imię i Nazwisko">
+        <button onclick="addUser()">Dodaj</button>
+    </div>
 
     <script>
         function goHome() {
@@ -54,8 +67,8 @@
         }
 
         async function resetUsers() {
-            const username = document.getElementById("adminUsername").value;
-            const password = document.getElementById("adminPassword").value;
+            const username = document.getElementById("resetUsername").value;
+            const password = document.getElementById("resetPassword").value;
             
             const response = await fetch("/reset-users", {
                 method: "POST",
@@ -89,11 +102,13 @@
         async function addUser() {
             const name = document.getElementById("newUserName").value;
             if (!name) return alert("Podaj imię i nazwisko!");
-            await fetch("/users", {
+            const response = await fetch("/users", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ name })
             });
+            const result = await response.json();
+            alert(result.message);
             loadUsers();
         }
 
@@ -107,7 +122,18 @@
             loadUsers();
         }
 
-        loadUsers();
+        function loginAdmin() {
+            const username = document.getElementById("adminUsername").value;
+            const password = document.getElementById("adminPassword").value;
+
+            if (username === "admin" && password === "admin") {
+                document.getElementById("loginSection").classList.add("hidden");
+                document.getElementById("adminPanel").classList.remove("hidden");
+                loadUsers();
+            } else {
+                alert("Błędne dane logowania!");
+            }
+        }
     </script>
 </body>
 </html>
