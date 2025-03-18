@@ -19,7 +19,14 @@
 
     <button onclick="sendPDF()">Generuj i Wyślij PDF</button>
 
+    <br><br>
+    <button onclick="goToAdmin()">Przejdź do panelu admina</button>
+
     <script>
+        function goToAdmin() {
+            window.location.href = "/admin";
+        }
+
         async function sendPDF() {
             const data = {
                 name: document.getElementById("name").value.trim(),
