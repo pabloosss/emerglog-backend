@@ -1,83 +1,103 @@
-//////////////// server.js ////////////////
+//// server.js ////
 const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const nodemailer = require("nodemailer");
 const fs = require("fs");
+const path = require("path");
+const puppeteer = require("puppeteer"); // <— kluczowe
 require("dotenv").config();
 
 const app = express();
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
 
-// 1) Zwiększamy limit JSON
 app.use(cors());
-// limit np. do 10mb:
-app.use(bodyParser.json({ limit: "10mb" }));
-app.use(bodyParser.urlencoded({ limit: "10mb", extended: true }));
-
-// pliki statyczne
+app.use(bodyParser.json({ limit: "2mb" }));
 app.use(express.static("public"));
 
-// Twoje zmienne z .env
+// Dane do maila
 const EMAIL_USER = process.env.EMAIL_USER;
 const EMAIL_PASS = process.env.EMAIL_PASS;
 
-// ewentualny admin
-app.get("/admin", (req, res)=>{
-  res.sendFile(__dirname + "/public/admin.html");
-});
-
-// Strona główna
+// Endpoint testowy / cokolwiek
 app.get("/", (req, res)=>{
-  res.sendFile(__dirname + "/public/index.html");
+  res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-// Odbiera PDF (base64) i wysyła do Pawła
-app.post("/send-pdf", async (req, res)=>{
+// Endpoint generujący PDF
+app.post("/send-data", async (req, res)=>{
   try {
-    const { fileName, base64 } = req.body;
-    if(!fileName || !base64){
-      return res.status(400).json({ message:"Brak parametru fileName/base64" });
+    const { name, totalHours } = req.body;
+    if(!name) {
+      return res.status(400).json({message:"Brak name"});
     }
-    // Tworzymy tymczasowy plik
-    fs.writeFileSync(fileName, Buffer.from(base64,"base64"));
 
-    // Wysyłka mailem
-    await sendEmail(fileName);
+    // 1) Generujemy dynamiczny HTML z Twoją tabelą
+    const htmlContent = buildHtmlContent(name, totalHours);
 
-    // usuwamy plik
-    fs.unlinkSync(fileName);
+    // 2) Odpalamy Puppeteer => generujemy PDF
+    const pdfPath = `${Date.now()}_harmonogram.pdf`;
+    await createPDFviaPuppeteer(htmlContent, pdfPath);
 
-    return res.json({ message:"PDF wysłany do Pawła!" });
-  } catch(e){
-    console.error("Błąd /send-pdf", e);
-    return res.status(500).json({ message:"Błąd serwera", error:e });
+    // 3) Wysyłamy mailem
+    await sendPdfByMail(pdfPath);
+
+    // 4) Usuwamy
+    fs.unlinkSync(pdfPath);
+
+    res.json({message: "Wysłano mail z PDF do Pawła!"});
+  } catch(err){
+    console.error("Błąd send-data =>", err);
+    res.status(500).json({message:"Błąd serwera", error:String(err)});
   }
 });
 
-async function sendEmail(filePath){
-  console.log("sendEmail() =>", filePath);
-  const transporter = nodemailer.createTransport({
-    service: "Gmail",
-    auth: {
-      user: EMAIL_USER,
-      pass: EMAIL_PASS,
-    }
+// Generowanie PDF
+async function createPDFviaPuppeteer(htmlString, outFile){
+  // uruchamiasz headless Chrome
+  const browser = await puppeteer.launch({
+    args:["--no-sandbox","--disable-setuid-sandbox"],
   });
-  const mailOptions = {
-    from: EMAIL_USER,
-    to: "pawel.ruchlicki@emerlog.eu",
-    subject: "Harmonogram RmLogistics",
-    text: "Załącznik w PDF.",
-    attachments: [{
-      filename: filePath,
-      path: "./"+filePath
-    }]
-  };
-  await transporter.sendMail(mailOptions);
-  console.log("Wysłano mail z załącznikiem ->", filePath);
+  const page = await browser.newPage();
+
+  // Ładujesz swojego HTML-a w newPage
+  await page.setContent(htmlString, { waitUntil:"networkidle0" });
+
+  // PDF
+  await page.pdf({
+    path: outFile,
+    format: "A4",
+    printBackground: true
+  });
+
+  await browser.close();
 }
 
-app.listen(PORT, ()=>{
-  console.log(`Serwer działa na porcie ${PORT}`);
-});
+// Prosty HTML => w realu wstawisz tu swoje CSS, bootstrap itp.:
+function buildHtmlContent(name, hours){
+  return `
+  <!DOCTYPE html>
+  <html>
+    <head>
+      <meta charset="utf-8"/>
+      <title>Harmonogram</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin:20px; }
+        table { border-collapse: collapse; width: 100%; }
+        th,td { border:1px solid #222; padding:8px; text-align:center; }
+        thead { background:#eee; font-weight:bold; }
+      </style>
+    </head>
+    <body>
+      <h1 style="color:blue;">RmLogistics</h1>
+      <h2>Harmonogram dla: ${name}</h2>
+      <p>Liczba godzin: ${hours}</p>
+
+      <table>
+        <thead>
+          <tr><th>Dzień</th><th>Godz. start</th><th>Godz. end</th><th>Sum</th></tr>
+        </thead>
+        <tbody>
+          ${mockTableRows(hours)}
+        </tbody>
+     
