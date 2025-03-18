@@ -1,1 +1,55 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel Admina</title>
+</head>
+<body>
+    <h1>Panel Admina</h1>
+    
+    <table border="1">
+        <thead>
+            <tr>
+                <th>Imię i nazwisko</th>
+                <th>E-mail</th>
+                <th>Miesiąc</th>
+                <th>Data wysyłki</th>
+            </tr>
+        </thead>
+        <tbody id="submissionsTable">
+            <tr><td colspan="4">Ładowanie danych...</td></tr>
+        </tbody>
+    </table>
+
+    <button onclick="goBack()">Powrót</button>
+
+    <script>
+        function goBack() {
+            window.location.href = "/";
+        }
+
+        async function loadSubmissions() {
+            const response = await fetch("/submissions");
+            const submissions = await response.json();
+
+            const tableBody = document.getElementById("submissionsTable");
+            tableBody.innerHTML = "";
+
+            submissions.forEach(sub => {
+                const row = document.createElement("tr");
+                row.innerHTML = `
+                    <td>${sub.name}</td>
+                    <td>${sub.email}</td>
+                    <td>${sub.month}</td>
+                    <td>${new Date(sub.date).toLocaleString()}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        window.onload = loadSubmissions;
+    </script>
+</body>
+</html>
 
