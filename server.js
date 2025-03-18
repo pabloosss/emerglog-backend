@@ -40,6 +40,9 @@ app.post("/users", (req, res) => {
     if (!name || !email) return res.status(400).json({ message: "Brak imienia, nazwiska lub e-maila" });
 
     const users = loadData();
+    const exists = users.some(user => user.name === name);
+    if (exists) return res.status(400).json({ message: "Użytkownik już istnieje" });
+
     users.push({ name, email, sent: false });
     saveData(users);
     res.json({ message: "Dodano użytkownika" });
@@ -76,9 +79,9 @@ app.post("/send-pdf", async (req, res) => {
     }
 
     const users = loadData();
-    const user = users.find(u => u.name === name);
+    const user = users.find(u => u.name.toLowerCase().trim() === name.toLowerCase().trim());
     if (!user) {
-        return res.status(404).json({ message: "Użytkownik nie znaleziony" });
+        return res.status(404).json({ message: `❌ Użytkownik "${name}" nie znaleziony w bazie danych!` });
     }
 
     // 📌 Tworzenie pliku PDF
