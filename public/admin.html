@@ -4,18 +4,110 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Panel Admina</title>
-    <script defer src="admin.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid black; padding: 10px; text-align: left; }
+        button { padding: 10px; margin: 5px; cursor: pointer; }
+        .hidden { display: none; }
+    </style>
 </head>
 <body>
     <h1>Panel Admina</h1>
-
-    <button onclick="goToHome()">🔙 Powrót do strony głównej</button>
-
-    <ul id="user-list"></ul>
+    <button onclick="goHome()">Powrót do strony głównej</button>
+    <button onclick="showResetModal()">Resetuj statusy użytkowników</button>
+    <div id="resetModal" class="hidden">
+        <h3>Podaj dane administratora:</h3>
+        <input type="text" id="adminUsername" placeholder="Login"><br>
+        <input type="password" id="adminPassword" placeholder="Hasło"><br>
+        <button onclick="resetUsers()">Potwierdź</button>
+        <button onclick="hideResetModal()">Anuluj</button>
+    </div>
     
-    <input type="text" id="new-user-name" placeholder="Imię i nazwisko">
-    <input type="email" id="new-user-email" placeholder="Adres e-mail">
-    <button onclick="addUser()">➕ Dodaj użytkownika</button>
+    <h2>Lista użytkowników</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Imię i Nazwisko</th>
+                <th>Status</th>
+                <th>Akcje</th>
+            </tr>
+        </thead>
+        <tbody id="userTable"></tbody>
+    </table>
+    
+    <h2>Dodaj użytkownika</h2>
+    <input type="text" id="newUserName" placeholder="Imię i Nazwisko">
+    <button onclick="addUser()">Dodaj</button>
 
+    <script>
+        function goHome() {
+            window.location.href = "/";
+        }
+
+        function showResetModal() {
+            document.getElementById("resetModal").classList.remove("hidden");
+        }
+
+        function hideResetModal() {
+            document.getElementById("resetModal").classList.add("hidden");
+        }
+
+        async function resetUsers() {
+            const username = document.getElementById("adminUsername").value;
+            const password = document.getElementById("adminPassword").value;
+            
+            const response = await fetch("/reset-users", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await response.json();
+            alert(data.message);
+            hideResetModal();
+            loadUsers();
+        }
+
+        async function loadUsers() {
+            const response = await fetch("/users");
+            const users = await response.json();
+            const tableBody = document.getElementById("userTable");
+            tableBody.innerHTML = "";
+            users.forEach(user => {
+                const row = `<tr>
+                    <td>${user.name}</td>
+                    <td>${user.sent ? "✔ Wysłane" : "❌ Nie wysłane"}</td>
+                    <td>
+                        <button onclick="markSent('${user.name}')">Oznacz jako wysłane</button>
+                        <button onclick="deleteUser('${user.name}')">Usuń</button>
+                    </td>
+                </tr>`;
+                tableBody.innerHTML += row;
+            });
+        }
+
+        async function addUser() {
+            const name = document.getElementById("newUserName").value;
+            if (!name) return alert("Podaj imię i nazwisko!");
+            await fetch("/users", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name })
+            });
+            loadUsers();
+        }
+
+        async function deleteUser(name) {
+            await fetch(`/users/${name}`, { method: "DELETE" });
+            loadUsers();
+        }
+
+        async function markSent(name) {
+            await fetch(`/users/${name}/sent`, { method: "POST" });
+            loadUsers();
+        }
+
+        loadUsers();
+    </script>
 </body>
 </html>
