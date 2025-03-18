@@ -2,6 +2,8 @@ const express = require("express");
 const fs = require("fs");
 const cors = require("cors");
 const bodyParser = require("body-parser");
+const nodemailer = require("nodemailer");
+const PDFDocument = require("pdfkit");
 require("dotenv").config();
 
 const app = express();
@@ -82,6 +84,69 @@ app.post("/reset-users", (req, res) => {
     saveData(users);
 
     res.json({ message: "Zresetowano status wszystkich użytkowników!" });
+});
+
+// 📌 Endpoint do generowania i wysyłania PDF
+app.post("/send-pdf", async (req, res) => {
+    const { name, email } = req.body;
+
+    if (!name || !email) {
+        return res.status(400).json({ message: "Brak wymaganych danych!" });
+    }
+
+    console.log("📩 Próba wysyłki e-maila na adres:", email);
+
+    // Tworzenie pliku PDF
+    const doc = new PDFDocument();
+    const filePath = `./${name.replace(/\s+/g, "_")}_schedule.pdf`;
+    const writeStream = fs.createWriteStream(filePath);
+    doc.pipe(writeStream);
+
+    doc.fontSize(20).text(`Harmonogram dla: ${name}`, { align: "center" });
+    doc.moveDown();
+    doc.fontSize(14).text("Potwierdzenie wysyłki harmonogramu.");
+    doc.end();
+
+    writeStream.on("finish", async () => {
+        let transporter = nodemailer.createTransport({
+            service: "Gmail",
+            auth: {
+                user: process.env.EMAIL_USER,
+                pass: process.env.EMAIL_PASS,
+            },
+        });
+
+        let mailOptions = {
+            from: process.env.EMAIL_USER,
+            to: email,
+            subject: `Twój harmonogram - ${name}`,
+            text: "W załączniku znajdziesz swój harmonogram.",
+            attachments: [{ filename: `${name}_schedule.pdf`, path: filePath }],
+        };
+
+        try {
+            await transporter.sendMail(mailOptions);
+            console.log("✅ Email wysłany do:", email);
+            
+            let users = loadData();
+            let user = users.find(user => user.name === name);
+            if (user) {
+                user.sent = true;
+                saveData(users);
+            }
+
+            res.json({ message: "✅ PDF wysłany!" });
+
+            // Usuwanie pliku po wysłaniu
+            setTimeout(() => {
+                fs.unlinkSync(filePath);
+                console.log("🗑️ Plik PDF usunięty:", filePath);
+            }, 5000);
+        } catch (error) {
+            console.error("❌ Błąd wysyłania e-maila:", error);
+            res.status(500).json({ message: "❌ Błąd wysyłania e-maila", error });
+        }
+    });
 });
 
 // 📌 Strona logowania do panelu admina
