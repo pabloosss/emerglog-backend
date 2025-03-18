@@ -5,7 +5,6 @@ const bodyParser = require("body-parser");
 const nodemailer = require("nodemailer");
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
-const { GoogleSpreadsheet } = require("google-spreadsheet");
 require("dotenv").config();
 
 const app = express();
@@ -23,52 +22,18 @@ app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-// Testowy endpoint
-app.get("/test", (req, res) => {
-    res.json({ message: "✅ Serwer działa poprawnie!" });
+// Strona admina
+app.get("/admin", (req, res) => {
+    res.sendFile(path.join(__dirname, "public", "admin.html"));
 });
 
-// Konfiguracja Google Sheets
-const SPREADSHEET_ID = "10XgqG_OCszYY8wqJlhpiPNgBxuEwFZOJJF2iuXTdqpY"; // ID twojego arkusza
-const doc = new GoogleSpreadsheet(SPREADSHEET_ID);
+// Lista wysłanych zgłoszeń
+let sentSubmissions = [];
 
-// Funkcja aktualizacji arkusza Google Sheets
-async function updateSpreadsheet(name, month) {
-    try {
-        console.log("📊 Aktualizacja arkusza dla:", name, "Miesiąc:", month);
-
-        await doc.useServiceAccountAuth({
-            client_email: process.env.GOOGLE_CLIENT_EMAIL,
-            private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
-        });
-
-        await doc.loadInfo();
-        const sheet = doc.sheetsByIndex[0];
-
-        const rows = await sheet.getRows();
-        let found = false;
-
-        for (let row of rows) {
-            if (row._rawData[0] === name) {
-                const colIndex = sheet.headerValues.indexOf(month);
-                if (colIndex !== -1) {
-                    row[month] = "✅ Wysłano";
-                    await row.save();
-                    console.log(`✅ Zaktualizowano ${name} dla ${month}`);
-                    found = true;
-                } else {
-                    console.error(`❌ Nie znaleziono kolumny dla miesiąca: ${month}`);
-                }
-            }
-        }
-
-        if (!found) {
-            console.error(`❌ Nie znaleziono osoby: ${name}`);
-        }
-    } catch (error) {
-        console.error("❌ Błąd aktualizacji arkusza:", error);
-    }
-}
+// Endpoint do pobierania zgłoszeń dla admina
+app.get("/submissions", (req, res) => {
+    res.json(sentSubmissions);
+});
 
 // Endpoint do generowania i wysyłania PDF
 app.post("/send-pdf", async (req, res) => {
@@ -118,8 +83,11 @@ app.post("/send-pdf", async (req, res) => {
         try {
             await transporter.sendMail(mailOptions);
             console.log("✅ Email wysłany do:", email);
-            await updateSpreadsheet(name, month);
-            res.json({ message: "✅ PDF wysłany i arkusz zaktualizowany!" });
+
+            // Zapisujemy zgłoszenie w pamięci
+            sentSubmissions.push({ name, email, month, date: new Date().toISOString() });
+
+            res.json({ message: "✅ PDF wysłany i zgłoszenie zapisane!" });
 
             setTimeout(() => {
                 fs.unlinkSync(filePath);
