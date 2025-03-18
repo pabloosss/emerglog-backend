@@ -1,55 +1,79 @@
-<!DOCTYPE html>
-<html lang="pl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel Admina</title>
-</head>
-<body>
-    <h1>Panel Admina</h1>
-    
-    <table border="1">
-        <thead>
-            <tr>
-                <th>Imię i nazwisko</th>
-                <th>E-mail</th>
-                <th>Miesiąc</th>
-                <th>Data wysyłki</th>
-            </tr>
-        </thead>
-        <tbody id="submissionsTable">
-            <tr><td colspan="4">Ładowanie danych...</td></tr>
-        </tbody>
-    </table>
+// server.js - Główny backend Express
+const express = require("express");
+const fs = require("fs");
+const cors = require("cors");
+const bodyParser = require("body-parser");
+require("dotenv").config();
 
-    <button onclick="goBack()">Powrót</button>
+const app = express();
+const PORT = process.env.PORT || 10000;
 
-    <script>
-        function goBack() {
-            window.location.href = "/";
-        }
+app.use(cors());
+app.use(bodyParser.json());
+app.use(express.static("public")); // Udostępnianie plików statycznych
 
-        async function loadSubmissions() {
-            const response = await fetch("/submissions");
-            const submissions = await response.json();
+const DATA_FILE = "database.json";
 
-            const tableBody = document.getElementById("submissionsTable");
-            tableBody.innerHTML = "";
+// 📌 Wczytywanie bazy danych
+const loadData = () => {
+    if (!fs.existsSync(DATA_FILE)) return [];
+    const rawData = fs.readFileSync(DATA_FILE);
+    return JSON.parse(rawData);
+};
 
-            submissions.forEach(sub => {
-                const row = document.createElement("tr");
-                row.innerHTML = `
-                    <td>${sub.name}</td>
-                    <td>${sub.email}</td>
-                    <td>${sub.month}</td>
-                    <td>${new Date(sub.date).toLocaleString()}</td>
-                `;
-                tableBody.appendChild(row);
-            });
-        }
+// 📌 Zapisywanie bazy danych
+const saveData = (data) => {
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+};
 
-        window.onload = loadSubmissions;
-    </script>
-</body>
-</html>
+// 📌 Pobieranie użytkowników
+app.get("/users", (req, res) => {
+    const users = loadData();
+    res.json(users);
+});
 
+// 📌 Dodawanie nowego użytkownika
+app.post("/users", (req, res) => {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ message: "Brak imienia i nazwiska" });
+
+    const users = loadData();
+    users.push({ name, sent: false });
+    saveData(users);
+    res.json({ message: "Dodano użytkownika" });
+});
+
+// 📌 Usuwanie użytkownika
+app.delete("/users/:name", (req, res) => {
+    const { name } = req.params;
+    let users = loadData();
+    users = users.filter(user => user.name !== name);
+    saveData(users);
+    res.json({ message: "Usunięto użytkownika" });
+});
+
+// 📌 Oznaczanie wysłania
+app.post("/users/:name/sent", (req, res) => {
+    const { name } = req.params;
+    const users = loadData();
+    const user = users.find(user => user.name === name);
+    if (user) {
+        user.sent = true;
+        saveData(users);
+        res.json({ message: "Oznaczono jako wysłane" });
+    } else {
+        res.status(404).json({ message: "Użytkownik nie znaleziony" });
+    }
+});
+
+// 📌 Strona logowania do panelu admina
+app.get("/admin", (req, res) => {
+    res.sendFile(__dirname + "/public/admin.html");
+});
+
+// 📌 Strona główna
+app.get("/", (req, res) => {
+    res.sendFile(__dirname + "/public/index.html");
+});
+
+app.listen(PORT, () => console.log(`✅ Serwer działa na porcie ${PORT}`));
