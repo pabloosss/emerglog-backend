@@ -1,242 +1,39 @@
 <!DOCTYPE html>
 <html lang="pl">
 <head>
-  <meta charset="UTF-8">
-  <title>RmLogistics – Generator Godzin</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <!-- Bootstrap 5 -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"/>
-  <style>
-    body {
-      background-color: #f9f9f9;
-      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-      color: #333;
-    }
-    .container {
-      margin-top: 30px;
-      margin-bottom: 30px;
-      max-width: 1000px;
-    }
-    .header {
-      text-align: center;
-      margin-bottom: 30px;
-    }
-    .final-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 20px;
-      box-shadow: 0 0 5px rgba(0,0,0,0.2);
-    }
-    .final-table th, .final-table td {
-      border: 1px solid #000;
-      padding: 8px;
-      text-align: center;
-      vertical-align: middle;
-    }
-    .final-table thead th {
-      background-color: #e0e0e0;
-      font-weight: bold;
-    }
-    .final-table .holiday td {
-      background-color: #ffcccc;
-      color: #a00;
-      font-weight: bold;
-    }
-  </style>
+  <meta charset="UTF-8"/>
+  <title>Generator PDFKit</title>
 </head>
 <body>
+  <h1>Generator Godzin – PDFKit</h1>
+  <form id="sendForm">
+    <label>Imię i nazwisko: <input type="text" id="name" required></label><br><br>
+    <label>Łączna liczba godzin: <input type="number" id="hours" value="160"></label><br><br>
+    <button type="submit">Wyślij PDF do Pawła</button>
+  </form>
 
-<div class="container">
-  <div class="header">
-    <h1>
-      <span style="color: black;">Rm</span>
-      <span style="color: blue;">Logistics</span> – Generator
-    </h1>
-    <button class="btn btn-secondary" onclick="window.location.href='/admin'">
-      Panel Admina
-    </button>
-  </div>
+  <script>
+  document.getElementById("sendForm").addEventListener("submit", async(e)=>{
+    e.preventDefault();
+    const name = document.getElementById("name").value.trim();
+    const hours = parseInt(document.getElementById("hours").value,10)||0;
 
-  <!-- Formularz -->
-  <div class="card mb-4 p-3">
-    <form id="mainForm">
-      <div class="mb-3">
-        <label for="name" class="form-label">Imię i nazwisko:</label>
-        <input type="text" id="name" class="form-control" required/>
-      </div>
-      <div class="mb-3">
-        <label for="month" class="form-label">Miesiąc:</label>
-        <select id="month" class="form-select" required>
-          <option value="">Wybierz...</option>
-          <option value="1">Styczeń</option>
-          <option value="2">Luty</option>
-          <option value="3">Marzec</option>
-          <option value="4">Kwiecień</option>
-          <!-- ... -->
-          <option value="12">Grudzień</option>
-        </select>
-      </div>
-      <div class="mb-3">
-        <label for="year" class="form-label">Rok:</label>
-        <input type="number" id="year" class="form-control" value="2025" required/>
-      </div>
-      <div class="mb-3">
-        <label for="hours" class="form-label">Łączna liczba godzin (zlecenie):</label>
-        <input type="number" id="hours" class="form-control" min="1" value="160"/>
-      </div>
-      <button type="submit" class="btn btn-primary w-100">
-        Generuj tabelę, pobierz PDF i wyślij do Pawła
-      </button>
-    </form>
-  </div>
-
-  <!-- Wygenerowany harmonogram -->
-  <div id="output"></div>
-</div>
-
-<footer class="text-center text-muted mt-4">
-  &copy; 2023 RmLogistics
-</footer>
-
-<!-- Biblioteki -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
-<script>
-///////////////////// KONFIG / PRZYKŁAD /////////////////////
-// (1) Dla uproszczenia – weekendy i święta = wolne
-// (2) Zlecenie = stałe 160h – po 8h na dzień ;)
-// Tak żebyś miał prototyp.
-
-document.getElementById("mainForm").addEventListener("submit", async (e)=>{
-  e.preventDefault();
-  // 1) Tworzymy tabelkę w #output
-  generateTable();
-  // 2) Tworzymy PDF i wysyłamy + pobieramy
-  await generateAndSendAndDownloadPDF();
-});
-
-// Prosta funkcja generująca HTML tabeli
-function generateTable(){
-  const name = document.getElementById("name").value.trim();
-  const month = parseInt(document.getElementById("month").value,10);
-  const year = parseInt(document.getElementById("year").value,10);
-  const hours = parseInt(document.getElementById("hours").value,10)||0;
-
-  let html=`
-    <h3>Harmonogram dla: ${name}</h3>
-    <p>Miesiąc: ${month}, Rok: ${year}</p>
-    <p>Łączna liczba godzin (zlecenie): ${hours}</p>
-    <table class="final-table">
-      <thead>
-        <tr>
-          <th>Dzień</th>
-          <th>Data</th>
-          <th>Godz. rozpoczęcia</th>
-          <th>Godz. zakończenia</th>
-          <th>Godzin</th>
-        </tr>
-      </thead>
-      <tbody>
-  `;
-
-  // prosta pętla dni
-  const daysInMonth = new Date(year, month, 0).getDate();
-  let dayHours = hours/daysInMonth; // śmieszne uproszczenie
-  dayHours = Math.floor(dayHours);
-
-  for(let d=1; d<=daysInMonth; d++){
-    // weekendy wolne:
-    const dateObj = new Date(year, month-1, d);
-    const dayOfWeek = dateObj.getDay(); // 0 - nd
-    let start="8:00", end="16:00", h=8;
-    if(dayOfWeek===0||dayOfWeek===6){
-      start="-"; end="-"; h=0;
+    try {
+      const resp = await fetch("/send-pdf", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ name, hours })
+      });
+      const data = await resp.json();
+      if(resp.ok){
+        alert(data.message);
+      } else {
+        alert("Błąd: "+data.message);
+      }
+    } catch(err){
+      alert("Błąd fetch: "+err);
     }
-    // Wersja "zlecenie" – realnie byśmy mieli logikę, tu uproszczone
-    html +=`
-      <tr>
-        <td>${d}</td>
-        <td>${dateObj.toLocaleDateString("pl-PL",{day:"2-digit",month:"2-digit",year:"numeric"})}</td>
-        <td>${start}</td>
-        <td>${end}</td>
-        <td>${h}</td>
-      </tr>
-    `;
-  }
-
-  html+=`
-      </tbody>
-    </table>
-  `;
-  document.getElementById("output").innerHTML = html;
-}
-
-
-// Ta funkcja:
-// (1) generuje PDF z #output
-// (2) pobiera PDF do pliku lokalnego
-// (3) wysyła do /send-pdf – a stamtąd poleci mail do Pawła
-async function generateAndSendAndDownloadPDF(){
-  console.log("generateAndSendAndDownloadPDF() - start");
-  try {
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF("portrait","pt","a4");
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
-    const margin = 20;
-
-    // Tytuł
-    pdf.setFontSize(24);
-    pdf.setTextColor(0,0,0);
-    pdf.text("Rm", margin, margin+30, {baseline:"top"});
-    pdf.setTextColor(0,0,255);
-    pdf.text("Logistics", margin+40, margin+30, {baseline:"top"});
-
-    // Zrzut z #output
-    const outEl = document.getElementById("output");
-    if(!outEl) {
-      alert("Brak #output do PDF!");
-      return;
-    }
-    const canvas = await html2canvas(outEl, { scale:2, useCORS:true });
-    const pngData = canvas.toDataURL("image/png");
-    const availW= pageW - 2*margin, availH= pageH - (margin+50);
-    const ratio= Math.min(availW/canvas.width, availH/canvas.height);
-    let finalW= canvas.width*ratio, finalH= canvas.height*ratio;
-    let posX=(pageW-finalW)/2, posY= margin+50;
-    pdf.addImage(pngData,"PNG",posX,posY,finalW,finalH);
-
-    // Lokalne pobranie
-    const fileName = "harmonogram_local.pdf";
-    pdf.save(fileName);
-
-    // Wysyłanie do backendu (mail do Pawła):
-    // -> konwersja do base64
-    const pdfBase64 = pdf.output("datauristring").split(",")[1]; // bez "data:application/pdf;base64,"
-
-    const response = await fetch("/send-pdf", {
-      method:"POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({
-        fileName: fileName,
-        base64: pdfBase64
-      })
-    });
-    const resData = await response.json();
-    if(response.ok){
-      alert(resData.message || "Wysłano mail do Pawła!");
-    } else {
-      alert("Błąd wysyłania maila: "+ (resData.message||"??"));
-    }
-
-  } catch(err){
-    console.error("generateAndSendAndDownloadPDF Error:",err);
-    alert("Błąd generowania/wysyłania PDF!");
-  }
-  console.log("generateAndSendAndDownloadPDF() - done");
-}
-</script>
+  });
+  </script>
 </body>
 </html>
