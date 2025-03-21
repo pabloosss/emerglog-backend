@@ -1,103 +1,113 @@
-//// server.js ////
+//////////////// server.js ////////////////
 const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const nodemailer = require("nodemailer");
 const fs = require("fs");
-const path = require("path");
-const puppeteer = require("puppeteer"); // <— kluczowe
+const PDFDocument = require("pdfkit");
 require("dotenv").config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
+// Middleware
 app.use(cors());
 app.use(bodyParser.json({ limit: "2mb" }));
 app.use(express.static("public"));
 
-// Dane do maila
+// Dane do logowania do Gmaila – w pliku .env
+// EMAIL_USER=testemerlog2@gmail.com
+// EMAIL_PASS=abcdefgh
 const EMAIL_USER = process.env.EMAIL_USER;
 const EMAIL_PASS = process.env.EMAIL_PASS;
 
-// Endpoint testowy / cokolwiek
-app.get("/", (req, res)=>{
-  res.sendFile(path.join(__dirname, "public", "index.html"));
+// Endpoint testowy (strona główna z formularzem)
+app.get("/", (req, res) => {
+  res.sendFile(__dirname + "/public/index.html");
 });
 
-// Endpoint generujący PDF
-app.post("/send-data", async (req, res)=>{
+// Endpoint do generowania PDF i wysyłania
+app.post("/send-pdf", async (req, res) => {
   try {
-    const { name, totalHours } = req.body;
-    if(!name) {
-      return res.status(400).json({message:"Brak name"});
+    const { name, hours } = req.body;
+    if (!name || !hours) {
+      return res.status(400).json({ message: "Brak wymaganych danych: name/hours" });
     }
 
-    // 1) Generujemy dynamiczny HTML z Twoją tabelą
-    const htmlContent = buildHtmlContent(name, totalHours);
+    // Nazwa pliku PDF
+    const pdfName = `${name.replace(/\s+/g, "_")}_harmonogram.pdf`;
 
-    // 2) Odpalamy Puppeteer => generujemy PDF
-    const pdfPath = `${Date.now()}_harmonogram.pdf`;
-    await createPDFviaPuppeteer(htmlContent, pdfPath);
+    // 1) Generujemy PDF w Node (pdfkit)
+    await createPdfFile(pdfName, { name, hours });
 
-    // 3) Wysyłamy mailem
-    await sendPdfByMail(pdfPath);
+    // 2) Wysyłamy mailem
+    await sendMailWithPdf(pdfName);
 
-    // 4) Usuwamy
-    fs.unlinkSync(pdfPath);
+    // 3) Usuwamy plik
+    fs.unlinkSync(pdfName);
 
-    res.json({message: "Wysłano mail z PDF do Pawła!"});
-  } catch(err){
-    console.error("Błąd send-data =>", err);
-    res.status(500).json({message:"Błąd serwera", error:String(err)});
+    res.json({ message: "PDF wygenerowano i wysłano do Pawła!" });
+  } catch (err) {
+    console.error("Błąd /send-pdf:", err);
+    res.status(500).json({ message: "Błąd serwera", error: String(err) });
   }
 });
 
-// Generowanie PDF
-async function createPDFviaPuppeteer(htmlString, outFile){
-  // uruchamiasz headless Chrome
-  const browser = await puppeteer.launch({
-    args:["--no-sandbox","--disable-setuid-sandbox"],
+// Funkcja generująca PDF
+function createPdfFile(filePath, data) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: "A4", margin: 50 });
+    const writeStream = fs.createWriteStream(filePath);
+    doc.pipe(writeStream);
+
+    doc.fontSize(20).text("Harmonogram Godzin", { align: "center" });
+    doc.moveDown();
+    doc.fontSize(14).text(`Imię i nazwisko: ${data.name}`);
+    doc.text(`Liczba godzin: ${data.hours}`, { underline: true });
+    doc.moveDown();
+
+    doc.fontSize(12).text("Przykładowa tabela (pdfkit, layout prosty):");
+    doc.moveDown();
+
+    // Twórzmy „pseudo-tabelę”:
+    for (let i = 1; i <= 5; i++) {
+      doc.text(`Dzień ${i} – 8:00 - 16:00 (8h)`);
+    }
+
+    doc.end();
+    writeStream.on("finish", () => resolve());
+    writeStream.on("error", (e) => reject(e));
   });
-  const page = await browser.newPage();
-
-  // Ładujesz swojego HTML-a w newPage
-  await page.setContent(htmlString, { waitUntil:"networkidle0" });
-
-  // PDF
-  await page.pdf({
-    path: outFile,
-    format: "A4",
-    printBackground: true
-  });
-
-  await browser.close();
 }
 
-// Prosty HTML => w realu wstawisz tu swoje CSS, bootstrap itp.:
-function buildHtmlContent(name, hours){
-  return `
-  <!DOCTYPE html>
-  <html>
-    <head>
-      <meta charset="utf-8"/>
-      <title>Harmonogram</title>
-      <style>
-        body { font-family: Arial, sans-serif; margin:20px; }
-        table { border-collapse: collapse; width: 100%; }
-        th,td { border:1px solid #222; padding:8px; text-align:center; }
-        thead { background:#eee; font-weight:bold; }
-      </style>
-    </head>
-    <body>
-      <h1 style="color:blue;">RmLogistics</h1>
-      <h2>Harmonogram dla: ${name}</h2>
-      <p>Liczba godzin: ${hours}</p>
+// Funkcja wysyłająca mail
+async function sendMailWithPdf(pdfPath) {
+  const transporter = nodemailer.createTransport({
+    service: "Gmail",
+    auth: {
+      user: EMAIL_USER,
+      pass: EMAIL_PASS,
+    },
+  });
 
-      <table>
-        <thead>
-          <tr><th>Dzień</th><th>Godz. start</th><th>Godz. end</th><th>Sum</th></tr>
-        </thead>
-        <tbody>
-          ${mockTableRows(hours)}
-        </tbody>
-     
+  const mailOptions = {
+    from: EMAIL_USER,
+    to: "pawel.ruchlicki@emerlog.eu",
+    subject: "Twój harmonogram godzin (pdfkit)",
+    text: "W załączniku znajdziesz swój harmonogram godzin (wygenerowany pdfkit).",
+    attachments: [
+      {
+        filename: pdfPath,
+        path: "./" + pdfPath,
+      },
+    ],
+  };
+
+  await transporter.sendMail(mailOptions);
+  console.log("Mail wysłano do pawel.ruchlicki@emerlog.eu z załącznikiem =>", pdfPath);
+}
+
+// Start
+app.listen(PORT, () => {
+  console.log("Serwer działa na porcie", PORT);
+});
